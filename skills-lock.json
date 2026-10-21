@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "uin-canary": {
+      "source": "gsmarcil/skills-cicd-hosted-validation-20261020",
+      "sourceType": "github",
+      "skillPath": "uin-canary/SKILL.md",
+      "computedHash": "515597529a0a3a1bedf7bc7a7fddd46b1211f34097e328d47fa0a97e0a7a9752"
+    }
+  }
+}
