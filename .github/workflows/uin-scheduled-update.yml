@@ -1,0 +1,76 @@
+name: uin-scheduled-update-timing
+
+# Measures whether a scheduled, unattended `skills update` re-fetches and parses
+# the source skill (CWE-1333 stall) with no human interaction at run time.
+# Read-only: clones a private source (A) and times the update; installs nothing new.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # best-effort; GitHub runs schedules only on the default branch and may delay them
+  workflow_dispatch: {}       # manual baseline only
+
+permissions:
+  contents: read
+
+jobs:
+  update-timing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DO_NOT_TRACK: "1"
+      DISABLE_TELEMETRY: "1"
+      NO_COLOR: "1"
+      GH_TOKEN: ${{ secrets.SKILLS_SRC_PAT }}
+      GITHUB_TOKEN: ${{ secrets.SKILLS_SRC_PAT }}
+      SOURCE_REPO: gsmarcil/skills-cicd-hosted-validation-20261020
+    steps:
+      - name: Checkout consumer (B)
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Authenticate git to the private source (A)
+        run: |
+          git config --global \
+            url."https://x-access-token:${SKILLS_SRC_PAT}@github.com/".insteadOf \
+            "https://github.com/"
+        env:
+          SKILLS_SRC_PAT: ${{ secrets.SKILLS_SRC_PAT }}
+
+      - name: Record run context
+        run: |
+          {
+            echo "event_name=${{ github.event_name }}"
+            echo "run_started_utc=$(date -u +%FT%TZ)"
+            echo "source_head_sha=$(git ls-remote "https://github.com/${SOURCE_REPO}" HEAD | cut -f1)"
+            echo "node_version=$(node -v)"
+          } | tee context.txt
+
+      - name: Timed skills update (project scope, non-interactive)
+        run: |
+          start=$(date +%s.%N)
+          set +e
+          npx -y skills@1.7.4 update --project --yes > update.log 2>&1
+          rc=$?
+          set -e
+          end=$(date +%s.%N)
+          wall=$(awk "BEGIN{printf \"%.3f\", ${end}-${start}}")
+          {
+            echo "exit_code=${rc}"
+            echo "wall_seconds=${wall}"
+          } | tee -a context.txt
+          echo "----- tail of update.log -----"
+          tail -n 40 update.log || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uin-${{ github.event_name }}-${{ github.run_id }}
+          path: |
+            context.txt
+            update.log
+            skills-lock.json
